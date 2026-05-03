@@ -1,22 +1,39 @@
 # ScribeAI - 个人知识管理 AI 助手
+
 <div align="center">
-# scribeai
-个人知识管理AI助手 - 收藏内容问答系统
-帮你把碎片化的链接收藏，变成结构化的知识
+
+![ScribeAI](https://img.shields.io/badge/ScribeAI-v1.0.0-6366f1?style=for-the-badge&labelColor=4f46e5)
+![Python](https://img.shields.io/badge/Python-3.12+-3776ab?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+
+**🔗 把碎片化的链接收藏，变成结构化的知识**
+
+[English](./README_EN.md) | [简体中文](./README.md)
+
+</div>
+
+---
 
 ## ✨ 功能特点
-链接收藏：粘贴URL或浏览器插件一键收藏任意网页
-文件上传：支持PDF、TXT、Markdown 本地文件
-AI 智能分析：自动总结、提取要点、生成标签 
-知识图谱：可视化知识网络，发现知识关联
-知识问答：基于收藏内容进行智能问答
-分类管理：灵活的分类和标签系统
+
+| 功能 | 描述 |
+|------|------|
+| 🔗 **链接收藏** | 粘贴 URL 或浏览器插件一键收藏任意网页 |
+| 📄 **文件上传** | 支持 PDF、TXT、Markdown 本地文件 |
+| 🤖 **AI 智能分析** | 自动总结、提取要点、生成标签 |
+| 🕸️ **知识图谱** | 可视化知识网络，发现知识关联 |
+| 💬 **知识问答** | 基于收藏内容进行智能问答 |
+| 🏷️ **分类管理** | 灵活的分类和标签系统 |
+
+---
 
 ## 🚀 快速开始
 
 ### 环境要求
-Python: 3.12 或更高版本
-操作系统: Windows / macOS / Linux
+
+- **Python**: 3.12 或更高版本
+- **操作系统**: Windows / macOS / Linux
 
 ### 1. 安装依赖
 
@@ -59,7 +76,7 @@ cp backend/.env.example backend/.env
 DEEPSEEK_API_KEY=你的API密钥
 ```
 
-> 💡 获取 DeepSeek API Key:https://platform.deepseek.com/api_keys
+> 💡 获取 DeepSeek API Key: [https://platform.deepseek.com/](https://platform.deepseek.com/)
 
 ### 3. 启动服务
 
@@ -231,9 +248,18 @@ docker run -d -p 8000:8000 \
 
 本项目基于 MIT 许可证开源，详情见 [LICENSE](LICENSE) 文件。
 
+---
+
+## 🙏 致谢
+
+- [DeepSeek](https://platform.deepseek.com/) - 提供强大的 AI 能力
+- [FastAPI](https://fastapi.tiangolo.com/) - 现代快速的 Web 框架
+- [TailwindCSS](https://tailwindcss.com/) - 优雅的 CSS 框架
+
+---
+
 <div align="center">
 
 **如果这个项目对你有帮助，请给我一个 ⭐️**
 
 </div>
-
