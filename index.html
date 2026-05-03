@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScribeAI - 个人知识管理助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        .graph-container { height: 600px; border: 1px solid #e5e7eb; border-radius: 0.75rem; }
+        .modal-overlay { background: rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app" v-cloak>
+        <nav class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <h1 class="text-xl font-bold text-indigo-600">ScribeAI</h1>
+                    <div class="flex space-x-2">
+                        <button @click="currentView = 'collect'"
+                            :class="['px-4 py-2 rounded-lg transition', currentView === 'collect' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100']">
+                            收藏
+                        </button>
+                        <button @click="currentView = 'graph'"
+                            :class="['px-4 py-2 rounded-lg transition', currentView === 'graph' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100']">
+                            知识图谱
+                        </button>
+                        <button @click="currentView = 'ask'"
+                            :class="['px-4 py-2 rounded-lg transition', currentView === 'ask' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100']">
+                            问答
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto px-4 py-8">
+            <!-- 收藏视图 -->
+            <div v-if="currentView === 'collect'">
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <!-- 左侧边栏：分类管理 -->
+                    <div class="lg:col-span-1">
+                        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                            <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                                </svg>
+                                分类管理
+                            </h3>
+
+                            <div class="mb-4">
+                                <div class="flex gap-2">
+                                    <input v-model="newCategoryName" type="text" placeholder="新分类名称"
+                                        class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <button @click="createCategory"
+                                        class="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">
+                                        添加
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <button @click="selectedCategory = null"
+                                    :class="['w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-2',
+                                        !selectedCategory ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100']">
+                                    <span class="w-3 h-3 rounded-full bg-gray-400"></span>
+                                    全部内容
+                                    <span class="ml-auto text-xs text-gray-500">{{ contents.length }}</span>
+                                </button>
+                                <div v-for="cat in categories" :key="cat.id">
+                                    <button @click="selectedCategory = cat"
+                                        :class="['w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-2 group',
+                                            selectedCategory && selectedCategory.id === cat.id ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100']">
+                                        <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: cat.color }"></span>
+                                        <span class="flex-1 truncate">{{ cat.name }}</span>
+                                        <span class="ml-auto text-xs text-gray-500">{{ getCategoryCount(cat.id) }}</span>
+                                        <button @click.stop="deleteCategory(cat.id)"
+                                            class="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 文件上传 -->
+                        <div class="bg-white rounded-xl shadow-sm p-6">
+                            <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                </svg>
+                                上传文件
+                            </h3>
+
+                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition cursor-pointer"
+                                @dragover.prevent="dragOver = true" @dragleave="dragOver = false"
+                                @drop.prevent="handleFileDrop" :class="{ 'border-indigo-500 bg-indigo-50': dragOver }">
+                                <input type="file" ref="fileInput" @change="handleFileSelect" accept=".pdf,.txt,.md" class="hidden">
+                                <svg class="w-12 h-12 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                <p class="text-gray-600 text-sm">拖拽 PDF/TXT/MD 文件到此处</p>
+                                <p class="text-gray-400 text-xs mt-1">或点击选择文件</p>
+                            </div>
+
+                            <div v-if="uploadingFile" class="mt-4">
+                                <div class="flex items-center gap-2">
+                                    <svg class="animate-spin w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                    <span class="text-sm text-gray-600">正在上传和解析...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧主内容 -->
+                    <div class="lg:col-span-3">
+                        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                            <h2 class="text-lg font-semibold mb-4">收藏新内容</h2>
+                            <div class="flex gap-4">
+                                <input v-model="collectUrl" type="url" placeholder="粘贴网址 URL..."
+                                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                                <button @click="collectUrlFn" :disabled="collecting"
+                                    class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
+                                    <span v-if="collecting">分析中...</span>
+                                    <span v-else>收藏</span>
+                                </button>
+                            </div>
+                            <p v-if="collectError" class="mt-2 text-red-600 text-sm">{{ collectError }}</p>
+                        </div>
+
+                        <div v-if="loading" class="text-center py-12 text-gray-500">加载中...</div>
+
+                        <div v-else-if="filteredContents.length === 0" class="text-center py-12 text-gray-500">
+                            <p>还没有收藏内容，快去添加吧！</p>
+                        </div>
+
+                        <div v-else class="space-y-4">
+                            <div v-for="item in filteredContents" :key="item.id"
+                                class="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span v-if="item.file_type && item.file_type !== 'url'"
+                                                class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
+                                                {{ (item.file_type || 'WEB').toUpperCase() }}
+                                            </span>
+                                            <a :href="item.url" target="_blank"
+                                                class="text-lg font-semibold text-indigo-600 hover:underline">{{ item.title }}</a>
+                                        </div>
+
+                                        <!-- 分类标签 -->
+                                        <div v-if="item.category_id" class="flex items-center gap-2 mb-2">
+                                            <span class="px-2 py-0.5 text-xs rounded"
+                                                :style="{ backgroundColor: getCategoryColor(item.category_id) + '20', color: getCategoryColor(item.category_id) }">
+                                                {{ getCategoryName(item.category_id) }}
+                                            </span>
+                                            <button @click="openCategorySelector(item)"
+                                                class="text-xs text-gray-500 hover:text-indigo-600">修改分类</button>
+                                        </div>
+                                        <button v-else @click="openCategorySelector(item)"
+                                            class="text-xs text-gray-500 hover:text-indigo-600 mb-2">+ 添加分类</button>
+
+                                        <!-- 标签 -->
+                                        <div v-if="item.tags && item.tags.length" class="flex flex-wrap gap-2 mt-2">
+                                            <span v-for="tag in item.tags" :key="tag"
+                                                class="px-2 py-1 bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-xs rounded-full">{{ tag }}</span>
+                                        </div>
+
+                                        <!-- AI 分析结果 -->
+                                        <div v-if="item.summary" class="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-l-4 border-indigo-400">
+                                            <span class="text-sm font-medium text-indigo-700">摘要</span>
+                                            <p class="text-gray-700 text-sm leading-relaxed mt-1">{{ item.summary }}</p>
+                                        </div>
+
+                                        <div v-if="item.main_content" class="mt-4 p-4 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg border-l-4 border-cyan-400">
+                                            <span class="text-sm font-medium text-cyan-700">主要内容</span>
+                                            <p class="text-gray-700 text-sm leading-relaxed mt-1">{{ item.main_content }}</p>
+                                        </div>
+
+                                        <div v-if="item.key_points && item.key_points.length" class="mt-4">
+                                            <span class="text-sm font-medium text-green-700">关键要点</span>
+                                            <ul class="mt-2 space-y-1">
+                                                <li v-for="(point, idx) in item.key_points" :key="idx"
+                                                    class="flex items-start gap-2 text-sm text-gray-700">
+                                                    <span class="text-green-500">{{ idx + 1 }}.</span>
+                                                    <span>{{ point }}</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <div v-if="item.value" class="mt-4 p-3 bg-emerald-50 rounded-lg">
+                                            <span class="text-sm font-medium text-emerald-700">收藏价值：</span>
+                                            <span class="text-sm text-gray-700">{{ item.value }}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-col gap-2 ml-4">
+                                        <button @click="openRelationDialog(item)"
+                                            class="text-gray-400 hover:text-blue-500 p-2 hover:bg-blue-50 rounded-lg" title="添加关联">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                                            </svg>
+                                        </button>
+                                        <button @click="deleteContent(item.id)"
+                                            class="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg" title="删除">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 知识图谱视图 -->
+            <div v-if="currentView === 'graph'">
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div class="lg:col-span-3">
+                        <div class="bg-white rounded-xl shadow-sm p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h2 class="text-lg font-semibold">知识网络</h2>
+                                <div class="flex gap-2">
+                                    <button @click="loadGraph"
+                                        class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">刷新</button>
+                                    <select v-model="graphFilter"
+                                        class="px-3 py-1 text-sm border border-gray-300 rounded-lg">
+                                        <option value="all">全部</option>
+                                        <option value="paper">论文</option>
+                                        <option value="web">网页</option>
+                                        <option value="tag">标签</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="graph-container" class="graph-container"></div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-1">
+                        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                            <h3 class="text-lg font-semibold mb-4">图例</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded-full bg-blue-500"></span>
+                                    <span>论文/PDF</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded-full bg-green-500"></span>
+                                    <span>网页内容</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded bg-purple-500"></span>
+                                    <span>标签</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded bg-orange-500"></span>
+                                    <span>实体概念</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm p-6">
+                            <h3 class="text-lg font-semibold mb-4">关联关系</h3>
+                            <div v-if="relations.length === 0" class="text-sm text-gray-500 text-center py-4">
+                                暂无关联关系
+                            </div>
+                            <div v-else class="space-y-2">
+                                <div v-for="rel in relations" :key="rel.id"
+                                    class="p-2 bg-gray-50 rounded-lg text-sm">
+                                    <div class="flex items-center gap-1">
+                                        <span class="truncate max-w-[80px]">{{ getContentTitle(rel.source_id) }}</span>
+                                        <span class="text-gray-400">-</span>
+                                        <span class="text-blue-600">{{ rel.relation_type }}</span>
+                                        <span class="text-gray-400">-</span>
+                                        <span class="truncate max-w-[80px]">{{ getContentTitle(rel.target_id) }}</span>
+                                    </div>
+                                    <button @click="deleteRelation(rel.id)"
+                                        class="text-xs text-red-500 hover:text-red-700 mt-1">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 问答视图 -->
+            <div v-if="currentView === 'ask'">
+                <div class="max-w-3xl mx-auto">
+                    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-lg font-semibold mb-4">知识问答</h2>
+                        <p class="text-gray-600 text-sm mb-4">基于你的收藏内容回答问题</p>
+                        <div class="flex gap-4">
+                            <input v-model="question" type="text" placeholder="输入你的问题..."
+                                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                @keyup.enter="askQuestion">
+                            <button @click="askQuestion" :disabled="asking"
+                                class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
+                                <span v-if="asking">思考中...</span>
+                                <span v-else>提问</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="answer" class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="font-semibold mb-4">回答</h3>
+                        <div class="prose max-w-none">
+                            <p class="whitespace-pre-wrap text-gray-700">{{ answer }}</p>
+                        </div>
+                        <div v-if="sources && sources.length" class="mt-6 pt-6 border-t border-gray-200">
+                            <h4 class="font-semibold text-sm text-gray-600 mb-3">参考来源</h4>
+                            <div class="space-y-2">
+                                <a v-for="(source, idx) in sources" :key="idx" :href="source.url" target="_blank"
+                                    class="block text-indigo-600 hover:underline text-sm">{{ source.title }}</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 分类选择弹窗 -->
+        <div v-if="showCategoryModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50" @click.self="showCategoryModal = false">
+            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+                <h3 class="text-lg font-semibold mb-4">选择分类</h3>
+                <div class="space-y-2">
+                    <button v-for="cat in categories" :key="cat.id"
+                        @click="setContentCategory(cat.id)"
+                        class="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 flex items-center gap-3">
+                        <span class="w-4 h-4 rounded-full" :style="{ backgroundColor: cat.color }"></span>
+                        <span>{{ cat.name }}</span>
+                    </button>
+                </div>
+                <button @click="showCategoryModal = false" class="mt-4 w-full px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">
+                    取消
+                </button>
+            </div>
+        </div>
+
+        <!-- 关联关系弹窗 -->
+        <div v-if="showRelationModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50" @click.self="showRelationModal = false">
+            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+                <h3 class="text-lg font-semibold mb-4">添加关联关系</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">选择要关联的内容</label>
+                        <select v-model="relationTargetId" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                            <option value="">选择内容...</option>
+                            <option v-for="c in otherContents" :key="c.id" :value="c.id">{{ c.title }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">关系类型</label>
+                        <select v-model="relationType" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                            <option value="related">相关</option>
+                            <option value="cites">引用</option>
+                            <option value="extends">扩展</option>
+                            <option value="similar">类似</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">备注</label>
+                        <input v-model="relationNote" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            placeholder="可选备注...">
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button @click="showRelationModal = false"
+                        class="flex-1 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">取消</button>
+                    <button @click="createRelation"
+                        class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">确认</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 收藏成功弹窗 -->
+        <div v-if="showSuccessModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50" @click.self="showSuccessModal = false">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full mx-4">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800">收藏成功！</h3>
+                    <p class="text-gray-500 text-sm mt-1">AI 已完成分析</p>
+                </div>
+
+                <div v-if="lastCollected" class="space-y-4">
+                    <div v-if="lastCollected.summary" class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border-l-4 border-blue-500">
+                        <span class="text-sm font-medium text-blue-700">摘要</span>
+                        <p class="text-gray-700 text-sm mt-1">{{ lastCollected.summary }}</p>
+                    </div>
+                    <div v-if="lastCollected.key_points && lastCollected.key_points.length" class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-5 border-l-4 border-green-500">
+                        <span class="text-sm font-medium text-green-700">关键要点</span>
+                        <ul class="mt-2 space-y-1">
+                            <li v-for="(point, idx) in lastCollected.key_points" :key="idx" class="text-sm text-gray-700">
+                                {{ idx + 1 }}. {{ point }}
+                            </li>
+                        </ul>
+                    </div>
+                    <div v-if="lastCollected.tags && lastCollected.tags.length" class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-5 border-l-4 border-purple-500">
+                        <span class="text-sm font-medium text-purple-700">标签</span>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span v-for="tag in lastCollected.tags" :key="tag"
+                                class="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs rounded-full">{{ tag }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="showSuccessModal = false"
+                    class="w-full mt-6 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition font-medium">
+                    完成
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const API_BASE = 'http://localhost:8000';
+                const USER_ID = (() => {
+                    const stored = localStorage.getItem('scribeai_user_id');
+                    if (stored) return stored;
+                    const id = 'user_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('scribeai_user_id', id);
+                    return id;
+                })();
+
+                // 视图状态
+                const currentView = ref('collect');
+                const collectUrl = ref('');
+                const collecting = ref(false);
+                const collectError = ref('');
+                const contents = ref([]);
+                const loading = ref(false);
+
+                // 分类
+                const categories = ref([]);
+                const selectedCategory = ref(null);
+                const newCategoryName = ref('');
+                const showCategoryModal = ref(false);
+                const categorySelectorTarget = ref(null);
+
+                // 文件上传
+                const fileInput = ref(null);
+                const dragOver = ref(false);
+                const uploadingFile = ref(false);
+
+                // 知识图谱
+                const graphData = ref({ nodes: [], edges: [] });
+                const relations = ref([]);
+                const graphFilter = ref('all');
+                let network = null;
+
+                // 关联关系
+                const showRelationModal = ref(false);
+                const relationSourceId = ref(null);
+                const relationTargetId = ref('');
+                const relationType = ref('related');
+                const relationNote = ref('');
+
+                // 问答
+                const question = ref('');
+                const asking = ref(false);
+                const answer = ref('');
+                const sources = ref([]);
+
+                // 收藏成功弹窗
+                const showSuccessModal = ref(false);
+                const lastCollected = ref(null);
+
+                // 计算属性
+                const filteredContents = computed(() => {
+                    if (!selectedCategory.value) return contents.value;
+                    return contents.value.filter(c => c.category_id === selectedCategory.value.id);
+                });
+
+                const otherContents = computed(() => {
+                    if (!relationSourceId.value) return contents.value;
+                    return contents.value.filter(c => c.id !== relationSourceId.value);
+                });
+
+                // API 请求
+                async function api(path, options = {}) {
+                    const res = await fetch(`${API_BASE}${path}`, {
+                        ...options,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...options.headers
+                        }
+                    });
+                    return res.json();
+                }
+
+                async function apiUpload(path, formData) {
+                    const res = await fetch(`${API_BASE}${path}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    return res.json();
+                }
+
+                // 收藏 URL
+                async function collectUrlFn() {
+                    if (!collectUrl.value) return;
+                    collecting.value = true;
+                    collectError.value = '';
+
+                    try {
+                        const userId = localStorage.getItem('scribeai_user_id');
+                        const result = await api('/api/collect', {
+                            method: 'POST',
+                            body: JSON.stringify({ url: collectUrl.value, user_id: userId || 'anonymous' })
+                        });
+
+                        if (result.success) {
+                            collectUrl.value = '';
+                            lastCollected.value = result.data;
+                            showSuccessModal.value = true;
+                            await loadContents();
+                        } else {
+                            collectError.value = result.detail || '收藏失败';
+                        }
+                    } catch (e) {
+                        collectError.value = '无法连接到服务器，请确保后端已启动';
+                    } finally {
+                        collecting.value = false;
+                    }
+                }
+
+                async function loadContents() {
+                    loading.value = true;
+                    try {
+                        const userId = localStorage.getItem('scribeai_user_id');
+                        const url = userId ? `/api/contents?user_id=${userId}` : '/api/contents';
+                        const result = await api(url);
+                        if (result.success) {
+                            contents.value = result.data.contents || [];
+                        }
+                    } catch (e) {
+                        console.error('加载失败', e);
+                    } finally {
+                        loading.value = false;
+                    }
+                }
+
+                async function deleteContent(id) {
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    const url = userId ? `/api/contents/${id}?user_id=${userId}` : `/api/contents/${id}`;
+                    await api(url, { method: 'DELETE' });
+                    await loadContents();
+                }
+
+                // 分类管理
+                async function loadCategories() {
+                    try {
+                        const userId = localStorage.getItem('scribeai_user_id');
+                        const url = userId ? `/api/categories?user_id=${userId}` : '/api/categories';
+                        const result = await api(url);
+                        if (result.success) {
+                            categories.value = result.data.categories || [];
+                        }
+                    } catch (e) {
+                        console.error('加载分类失败', e);
+                    }
+                }
+
+                async function createCategory() {
+                    if (!newCategoryName.value.trim()) return;
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4'];
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+
+                    await api('/api/categories', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: newCategoryName.value,
+                            color: color,
+                            user_id: userId || 'anonymous'
+                        })
+                    });
+                    newCategoryName.value = '';
+                    await loadCategories();
+                }
+
+                async function deleteCategory(id) {
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    await api(`/api/categories/${id}?user_id=${userId || 'anonymous'}`, { method: 'DELETE' });
+                    if (selectedCategory.value && selectedCategory.value.id === id) {
+                        selectedCategory.value = null;
+                    }
+                    await loadCategories();
+                    await loadContents();
+                }
+
+                function getCategoryCount(categoryId) {
+                    return contents.value.filter(c => c.category_id === categoryId).length;
+                }
+
+                function getCategoryColor(categoryId) {
+                    const cat = categories.value.find(c => c.id === categoryId);
+                    return cat ? cat.color : '#6366f1';
+                }
+
+                function getCategoryName(categoryId) {
+                    const cat = categories.value.find(c => c.id === categoryId);
+                    return cat ? cat.name : '';
+                }
+
+                function openCategorySelector(item) {
+                    categorySelectorTarget.value = item;
+                    showCategoryModal.value = true;
+                }
+
+                async function setContentCategory(categoryId) {
+                    if (!categorySelectorTarget.value) return;
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    await api(`/api/contents/${categorySelectorTarget.value.id}/category?user_id=${userId || 'anonymous'}&category_id=${categoryId}`, {
+                        method: 'POST'
+                    });
+                    showCategoryModal.value = false;
+                    categorySelectorTarget.value = null;
+                    await loadContents();
+                }
+
+                // 文件上传
+                function handleFileDrop(e) {
+                    dragOver.value = false;
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        uploadFile(files[0]);
+                    }
+                }
+
+                function handleFileSelect(e) {
+                    const files = e.target.files;
+                    if (files.length > 0) {
+                        uploadFile(files[0]);
+                    }
+                }
+
+                async function uploadFile(file) {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    if (!['pdf', 'txt', 'md'].includes(ext)) {
+                        alert('仅支持 PDF、TXT、MD 文件');
+                        return;
+                    }
+
+                    uploadingFile.value = true;
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('user_id', userId || 'anonymous');
+
+                    try {
+                        const uploadResult = await apiUpload('/api/upload', formData);
+                        if (uploadResult.success) {
+                            const { file_id, file_path, file_type } = uploadResult.data;
+
+                            const collectResult = await api('/api/collect-file', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    title: file.name.replace(/\.[^/.]+$/, ''),
+                                    file_path: file_path,
+                                    file_type: file_type,
+                                    user_id: userId || 'anonymous'
+                                })
+                            });
+
+                            if (collectResult.success) {
+                                lastCollected.value = collectResult.data;
+                                showSuccessModal.value = true;
+                                await loadContents();
+                            }
+                        }
+                    } catch (e) {
+                        console.error('上传失败', e);
+                        alert('文件上传失败');
+                    } finally {
+                        uploadingFile.value = false;
+                    }
+                }
+
+                // 知识图谱
+                async function loadGraph() {
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    const url = userId ? `/api/graph?user_id=${userId}` : '/api/graph';
+
+                    try {
+                        const result = await api(url);
+                        if (result.success) {
+                            graphData.value = result.data;
+                            renderGraph();
+                        }
+                    } catch (e) {
+                        console.error('加载图谱失败', e);
+                    }
+                }
+
+                async function loadRelations() {
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    const url = userId ? `/api/relations?user_id=${userId}` : '/api/relations';
+
+                    try {
+                        const result = await api(url);
+                        if (result.success) {
+                            relations.value = result.data.relations || [];
+                        }
+                    } catch (e) {
+                        console.error('加载关系失败', e);
+                    }
+                }
+
+                function renderGraph() {
+                    nextTick(() => {
+                        const container = document.getElementById('graph-container');
+                        if (!container) return;
+
+                        const nodes = graphData.value.nodes.map(n => {
+                            let color = '#22c55e';
+                            let shape = 'dot';
+                            let size = 10;
+
+                            if (n.type === 'tag') {
+                                color = '#8b5cf6';
+                                shape = 'square';
+                                size = 8;
+                            } else if (n.type === 'entity') {
+                                color = '#f97316';
+                                shape = 'diamond';
+                                size = 8;
+                            } else if (n.type === 'pdf') {
+                                color = '#3b82f6';
+                                size = 12;
+                            } else {
+                                color = '#22c55e';
+                                size = 10;
+                            }
+
+                            return {
+                                id: n.id,
+                                label: n.title.substring(0, 20),
+                                title: n.title,
+                                color: { background: color, border: color },
+                                shape: shape,
+                                size: size
+                            };
+                        });
+
+                        const edges = graphData.value.edges.map(e => ({
+                            from: e.source,
+                            to: e.target,
+                            title: e.relation,
+                            arrows: 'to'
+                        }));
+
+                        const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+                        const options = {
+                            physics: { stabilization: { iterations: 200 } },
+                            interaction: { hover: true, navigationButtons: true }
+                        };
+
+                        if (network) {
+                            network.destroy();
+                        }
+                        network = new vis.Network(container, data, options);
+                    });
+                }
+
+                function getContentTitle(id) {
+                    const content = contents.value.find(c => c.id === id);
+                    return content ? content.title.substring(0, 15) : id.substring(0, 8);
+                }
+
+                // 关联关系
+                function openRelationDialog(item) {
+                    relationSourceId.value = item.id;
+                    relationTargetId.value = '';
+                    relationType.value = 'related';
+                    relationNote.value = '';
+                    showRelationModal.value = true;
+                }
+
+                async function createRelation() {
+                    if (!relationSourceId.value || !relationTargetId.value) return;
+
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    await api('/api/relations', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            source_id: relationSourceId.value,
+                            target_id: relationTargetId.value,
+                            relation_type: relationType.value,
+                            note: relationNote.value,
+                            user_id: userId || 'anonymous'
+                        })
+                    });
+
+                    showRelationModal.value = false;
+                    await loadRelations();
+                    await loadGraph();
+                }
+
+                async function deleteRelation(id) {
+                    const userId = localStorage.getItem('scribeai_user_id');
+                    await api(`/api/relations/${id}?user_id=${userId || 'anonymous'}`, { method: 'DELETE' });
+                    await loadRelations();
+                    await loadGraph();
+                }
+
+                // 问答
+                async function askQuestion() {
+                    if (!question.value) return;
+                    asking.value = true;
+                    answer.value = '';
+                    sources.value = [];
+
+                    try {
+                        const result = await api('/api/ask', {
+                            method: 'POST',
+                            body: JSON.stringify({ question: question.value, user_id: USER_ID })
+                        });
+
+                        if (result.success) {
+                            answer.value = result.data.answer;
+                            sources.value = result.data.sources || [];
+                        }
+                    } catch (e) {
+                        answer.value = '无法连接到服务器，请确保后端已启动';
+                    } finally {
+                        asking.value = false;
+                    }
+                }
+
+                // 监听视图变化
+                watch(currentView, (newView) => {
+                    if (newView === 'graph') {
+                        loadGraph();
+                        loadRelations();
+                    }
+                });
+
+                onMounted(() => {
+                    loadContents();
+                    loadCategories();
+                });
+
+                return {
+                    currentView,
+                    collectUrl,
+                    collecting,
+                    collectError,
+                    collectUrlFn,
+                    contents,
+                    loading,
+                    deleteContent,
+                    filteredContents,
+                    categories,
+                    selectedCategory,
+                    newCategoryName,
+                    createCategory,
+                    deleteCategory,
+                    getCategoryCount,
+                    getCategoryColor,
+                    getCategoryName,
+                    showCategoryModal,
+                    openCategorySelector,
+                    setContentCategory,
+                    fileInput,
+                    dragOver,
+                    handleFileDrop,
+                    handleFileSelect,
+                    uploadingFile,
+                    graphData,
+                    relations,
+                    graphFilter,
+                    loadGraph,
+                    getContentTitle,
+                    showRelationModal,
+                    relationSourceId,
+                    relationTargetId,
+                    relationType,
+                    relationNote,
+                    openRelationDialog,
+                    otherContents,
+                    createRelation,
+                    deleteRelation,
+                    question,
+                    asking,
+                    answer,
+                    sources,
+                    askQuestion,
+                    showSuccessModal,
+                    lastCollected
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

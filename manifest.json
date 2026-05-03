@@ -1,0 +1,22 @@
+{
+    "manifest_version": 3,
+    "name": "ScribeAI 收藏助手",
+    "version": "1.0.0",
+    "description": "一键收藏网页内容，AI自动分析和整理",
+    "permissions": [
+        "activeTab",
+        "storage"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["content.js"]
+        }
+    ]
+}
